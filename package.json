@@ -2,11 +2,11 @@
   "name": "creative-coatings-ai-receptionist",
   "version": "1.0.0",
   "description": "",
- "main": "server.js",
- "scripts": {
-  "start": "node server.js",
-  "dev": "nodemon server.js"
-},
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/creativecoatingskc/creative-coatings-ai-receptionist.git"
@@ -23,7 +23,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "openai": "^7.0.0",
-    "twilio": "^6.0.2"
+    "twilio": "^6.0.2",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
