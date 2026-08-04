@@ -41,7 +41,12 @@ mediaStreamServer.on("connection", (twilioSocket) => {
   let streamSid = null;
   let callSid = null;
   let transferStarted = false;
+
+  let openAiConnected = false;
+  let sessionConfigured = false;
   let greetingRequested = false;
+  let greetingFinished = false;
+  let acceptingCallerAudio = false;
 
   const openAiSocket = new WebSocket(
     "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1",
@@ -64,6 +69,7 @@ mediaStreamServer.on("connection", (twilioSocket) => {
     }
 
     transferStarted = true;
+    acceptingCallerAudio = false;
 
     const departmentNames = {
       apparel: "Linda and the apparel department",
@@ -97,35 +103,16 @@ mediaStreamServer.on("connection", (twilioSocket) => {
     console.log(`Transferred call to ${department}: ${phoneNumber}`);
   }
 
-  function requestOpeningGreeting() {
+  function configureSession() {
     if (
-      greetingRequested ||
+      !openAiConnected ||
+      sessionConfigured ||
       openAiSocket.readyState !== WebSocket.OPEN
     ) {
       return;
     }
 
-    greetingRequested = true;
-
-    openAiSocket.send(
-      JSON.stringify({
-        type: "response.create",
-        response: {
-          instructions: `
-Give this opening greeting exactly once:
-
-"Thank you for calling Creative Coatings. Are you calling about wraps, tint, or signage, apparel, a job status update, or a design question? If you know the name of the employee you're looking for, you can say it now."
-
-After saying the greeting, stop speaking and wait for the caller to answer.
-Do not repeat the greeting.
-          `.trim()
-        }
-      })
-    );
-  }
-
-  openAiSocket.on("open", () => {
-    console.log("Connected to OpenAI Realtime.");
+    sessionConfigured = true;
 
     openAiSocket.send(
       JSON.stringify({
@@ -138,139 +125,148 @@ Do not repeat the greeting.
           instructions: `
 You are the phone receptionist for Creative Coatings in Platte City, Missouri.
 
-You are friendly, confident, natural, professional, and concise.
+You are friendly, professional, patient, natural, and concise.
 
-IMPORTANT GREETING RULE
+OPENING GREETING
 
-The opening greeting is created separately by the phone system.
+The phone system provides the opening greeting separately.
 
-Never restart or repeat the opening greeting after it has been spoken.
+Never repeat or restart the opening greeting.
 
-After the opening greeting, wait for the caller to answer and respond directly to what they say.
+After the greeting, wait silently for the caller to answer.
 
-If there is silence, wait patiently. Do not repeat the full greeting.
+Do not respond to breathing, coughing, fans, vehicle noise, music, paper movement, or other unclear background sounds.
 
-If you need to check whether the caller is still there, say only:
+Only respond when the caller makes a clear request.
 
-"Are you still with me?"
+Do not interrupt or talk over the caller.
 
-Do not sound like a phone tree.
-Do not read long lists.
-Allow the caller to answer naturally.
-Do not talk over the caller.
+If you cannot understand the caller, say only:
 
-CREATIVE COATINGS SERVICES
+"I'm sorry, I didn't quite catch that. Are you calling about a quote, apparel, a job status update, or design?"
 
-Creative Coatings provides:
+CALL OPTIONS
 
-- Commercial vehicle wraps and decals
-- Color-change vehicle wraps
+The caller may be calling about:
+
+1. A wrap, tint, or signage quote
+2. Apparel quotes or questions
+3. A job status update
+4. Design questions
+
+The caller may also ask for Linda, Bryan, or Jen by name.
+
+WRAP, TINT, AND SIGNAGE ROUTING
+
+Transfer to sales when the caller asks about:
+
+- Bryan
+- Sales
+- A wrap quote
+- Commercial vehicle wraps
+- Color-change wraps
 - Window tint
-- Paint protection film
-- Signs, banners, stickers, and decals
-- Custom apparel and embroidery
-- Graphic design and artwork services
+- Signage
+- Banners
+- Decals
+- Stickers
+- Paint protection film or PPF
+- Vehicle services
+- Pricing for wraps, tint, signage, decals, banners, or PPF
 
-CALL TRANSFER RULES
+Before transferring, say:
 
-APPAREL
+"Absolutely. I'll connect you with Bryan, who handles our wraps, tint, and signage quotes."
 
-Transfer to apparel when the caller:
+Then use transfer_call with department set to sales.
 
-- Asks for Linda
-- Asks for the apparel department
-- Asks about shirts
-- Asks about hats
-- Asks about embroidery
-- Asks about clothing
-- Asks about uniforms
-- Asks about custom apparel
-- Asks about an existing apparel order
+APPAREL ROUTING
 
-Say:
+Transfer to apparel when the caller asks about:
 
-"I'll connect you with Linda and the apparel department."
+- Linda
+- Apparel
+- Apparel quotes
+- Shirts
+- Hats
+- Embroidery
+- Uniforms
+- Clothing
+- An existing apparel order
+- General apparel questions
 
-Then use the transfer_call tool with department set to apparel.
+Before transferring, say:
 
-SALES, WRAPS, TINT, SIGNAGE AND JOB STATUS
+"Certainly. I'll connect you with Linda in our apparel department."
+
+Then use transfer_call with department set to apparel.
+
+JOB STATUS ROUTING
 
 Transfer to sales when the caller:
 
-- Asks for Bryan
-- Asks for the sales department
-- Asks about wraps
-- Asks about window tint
-- Asks about signage
-- Asks about decals
-- Asks about banners
-- Asks about paint protection film or PPF
-- Asks about vehicle services
-- Wants a quote
-- Wants to discuss pricing
-- Wants an update on an existing job
-- Asks about job status
-- Asks whether their project is finished
-- Asks whether their order is ready
-- Asks when their project will be completed
+- Wants a job status update
+- Asks whether a project is finished
+- Asks whether an order is ready
+- Asks when a project will be completed
+- Wants progress information about an existing project
 
-Say:
+Before transferring, say:
 
-"I'll connect you with Bryan and the sales team."
+"Absolutely. I'll connect you with Bryan for a job status update."
 
-Then use the transfer_call tool with department set to sales.
+Then use transfer_call with department set to sales.
 
-DESIGN
+DESIGN ROUTING
 
-Transfer to design when the caller:
+Transfer to design when the caller asks about:
 
-- Asks for Jen
-- Asks for the design department
-- Has an artwork question
-- Has a proof question
-- Wants a design revision
-- Needs help submitting artwork
-- Wants to discuss colors, layouts, logos, or design changes
+- Jen
+- The design department
+- Artwork
+- Proofs
+- Revisions
+- Logos
+- Colors
+- Layouts
+- Submitting artwork
+- Design changes
 
-Say:
+Before transferring, say:
 
-"I'll connect you with Jen and the design department."
+"Certainly. I'll connect you with Jen in our design department."
 
-Then use the transfer_call tool with department set to design.
+Then use transfer_call with department set to design.
 
 EMPLOYEE NAME ROUTING
 
-If the caller says Linda, transfer to apparel.
+Linda means apparel.
 
-If the caller says Bryan, transfer to sales.
+Bryan means sales.
 
-If the caller says Jen, transfer to design.
+Jen means design.
 
-Do not ask unnecessary follow-up questions when the caller has clearly requested a person, service, or department.
+When the destination is clear, do not ask unnecessary follow-up questions.
 
-Do not tell the caller that you cannot transfer them.
+Do not tell callers you cannot transfer them.
 
-Do not claim that the transfer has succeeded until the transfer tool has been used.
+Do not claim the transfer is complete until the transfer tool has been used.
 
-GENERAL CONVERSATION RULES
+UNCLEAR ANSWERS
 
-If the caller is unsure which department they need, ask one short question to determine the correct department.
+If the caller's answer is unclear, ask only:
 
-If the caller wants general information, help them briefly and then offer the appropriate transfer.
+"Are you calling about a wrap, tint, or signage quote; apparel; a job status update; or design?"
 
-If the caller wants a quote but does not want an immediate transfer, collect:
+Do not repeat the entire original greeting.
 
-- Their name
-- Their phone number
-- Vehicle year, make, and model when applicable
-- The service they are interested in
-- A short description of the project
+GENERAL RULES
 
 Do not invent prices.
 
 Do not promise exact completion dates.
 
-Do not say a project is finished unless its status has been verified.
+Do not say a project is complete unless its status has been verified.
 
 Do not disclose private customer information.
 
@@ -309,11 +305,18 @@ Then offer the appropriate transfer.
               format: {
                 type: "audio/pcmu"
               },
+
+              noise_reduction: {
+                type: "far_field"
+              },
+
               turn_detection: {
                 type: "server_vad",
+                threshold: 0.75,
+                prefix_padding_ms: 400,
+                silence_duration_ms: 1000,
                 create_response: true,
-                interrupt_response: true,
-                silence_duration_ms: 700
+                interrupt_response: false
               }
             },
 
@@ -327,6 +330,45 @@ Then offer the appropriate transfer.
         }
       })
     );
+  }
+
+  function requestOpeningGreeting() {
+    if (
+      greetingRequested ||
+      !sessionConfigured ||
+      !streamSid ||
+      openAiSocket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    greetingRequested = true;
+    acceptingCallerAudio = false;
+
+    openAiSocket.send(
+      JSON.stringify({
+        type: "response.create",
+        response: {
+          instructions: `
+Say exactly this greeting once:
+
+"Thank you for calling Creative Coatings. Are you calling about a wrap, tint, or signage quote; apparel quotes or questions; a job status update; or design questions? If you know the name of the person you're trying to reach, you can say it now."
+
+Do not add anything before or after the greeting.
+
+After saying it, stop speaking and wait silently for the caller.
+          `.trim()
+        }
+      })
+    );
+
+    console.log("Opening greeting requested.");
+  }
+
+  openAiSocket.on("open", () => {
+    console.log("Connected to OpenAI Realtime.");
+    openAiConnected = true;
+    configureSession();
   });
 
   twilioSocket.on("message", (message) => {
@@ -346,6 +388,7 @@ Then offer the appropriate transfer.
 
       if (
         event.event === "media" &&
+        acceptingCallerAudio &&
         openAiSocket.readyState === WebSocket.OPEN
       ) {
         openAiSocket.send(
@@ -373,6 +416,7 @@ Then offer the appropriate transfer.
       const event = JSON.parse(message.toString());
 
       if (event.type === "session.updated") {
+        console.log("OpenAI session updated.");
         requestOpeningGreeting();
       }
 
@@ -393,6 +437,23 @@ Then offer the appropriate transfer.
         );
       }
 
+      /*
+       * The first completed response is the greeting.
+       * Caller audio is ignored until the greeting has finished.
+       */
+      if (
+        event.type === "response.done" &&
+        greetingRequested &&
+        !greetingFinished
+      ) {
+        greetingFinished = true;
+
+        setTimeout(() => {
+          acceptingCallerAudio = true;
+          console.log("Greeting finished. Listening to caller.");
+        }, 350);
+      }
+
       if (
         event.type === "response.function_call_arguments.done" &&
         event.name === "transfer_call"
@@ -406,6 +467,7 @@ Then offer the appropriate transfer.
           await transferCall(department);
         } catch (error) {
           transferStarted = false;
+          acceptingCallerAudio = true;
 
           console.error("Transfer failed:", error.message);
 
@@ -429,7 +491,7 @@ Then offer the appropriate transfer.
                 type: "response.create",
                 response: {
                   instructions:
-                    "Apologize briefly, explain that the transfer could not be completed, and offer to take a message. Do not repeat the opening greeting."
+                    "Apologize briefly and offer to take a message. Do not repeat the opening greeting."
                 }
               })
             );
